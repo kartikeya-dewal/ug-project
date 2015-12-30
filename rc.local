@@ -1,0 +1,59 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+
+# load pci hotplug for dynamic disk attach in KVM (for EBS)
+depmod -a
+modprobe acpiphp
+
+# simple attempt to get the user ssh key using the meta-data service
+mkdir -p /home/ubuntu/.ssh
+echo >> /home/ubuntu/.ssh/authorized_keys
+curl -m 10 -s http://172.16.14.72/latest/meta-data/public-keys/0/openssh-key | grep 'ssh-rsa' >> /home/ubuntu/.ssh/authorized_keys
+echo "AUTHORIZED_KEYS:"
+echo "************************"
+cat /home/ubuntu/.ssh/authorized_keys
+echo "************************"
+
+# retrieve the hostname
+wget http://172.16.14.72/latest/meta-data/public-hostname -O /tmp/hostname
+wget http://172.16.14.72/latest/meta-data/public-ipv4 -O /tmp/ipv4
+FQDN=`cat /tmp/hostname`
+IP=`cat /tmp/ipv4`
+echo "" >> /tmp/hostname
+echo -e "$IP\t\t$FQDN" >> /etc/hosts
+cat /etc/hostname >> /tmp/hostname
+rm /etc/hostname
+rm /tmp/ipv4
+mv /tmp/hostname /etc/hostname
+
+# need to update the hostname
+/bin/hostname -F /etc/hostname
+
+# mount the ephemeral storage
+mkdir /eph
+mkfs.ext4 /dev/vdb
+mount /dev/vdb /eph
+
+# create the hadoop subdirs and chown it
+mkdir /eph/hadoop-datastore
+mkdir /eph/hadoop-datastore/tmp
+mkdir /eph/hadoop-datastore/tmp/hadoop
+mkdir /eph/hadoop-datastore/tmp/root
+chown -R ubuntu:ubuntu /eph/hadoop-datastore/tmp/hadoop
+chmod -R og+rwx /eph/hadoop-datastore/tmp/hadoop
+
+# create a data dir
+mkdir /eph/data
+chmod -R a+rwx /eph/data
+
+exit 0
